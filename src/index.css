@@ -1,0 +1,29 @@
+:root {
+  font-family: "Noto Sans SC", "Segoe UI Variable Text", "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  font-weight: 400;
+  color: #f5f7fb;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  min-width: 320px;
+  background: transparent;
+}
+
+a {
+  color: inherit;
+}
