@@ -9,6 +9,7 @@
 - 事项按纯文本编号输入，支持完成状态切换
 - 数据本地持久化，不依赖账号、网络或同步服务
 - 托盘常驻、右上锚定、无原生边框
+- 单实例运行，重复启动时自动唤醒已有窗口
 
 ## 版本
 
@@ -27,12 +28,25 @@
 - 设置项：窗口宽高、右偏移、上偏移、开机自启动
 - 托盘：显示、隐藏、设置、退出
 - 关闭窗口时隐藏到托盘而不是退出
+- 单实例运行保护，防止同时打开多个窗口实例
+
+## 存储位置
+
+Windows 下当前版本的本地存储位置如下：
+
+- 设置文件：`C:\Users\<用户名>\AppData\Roaming\com.lcy.desktopcal.lightweight\settings.json`
+- 日程数据库：`C:\Users\<用户名>\AppData\Local\com.lcy.desktopcal.lightweight\desktopcal.sqlite3`
+
+当前本机已经确认的实际落点：
+
+- 设置文件：`C:\Users\lcy20\AppData\Roaming\com.lcy.desktopcal.lightweight\settings.json`
+- SQLite 数据库：`C:\Users\lcy20\AppData\Local\com.lcy.desktopcal.lightweight\desktopcal.sqlite3`
 
 ## 当前限制
 
 - 当前为 Windows 优先实现
 - 节假日仍是内置静态数据，不是独立可配置数据源
-- 还没有真正挂到 WorkerW/桌面图标层之后
+- 还没有真正挂到 WorkerW / 桌面图标层之后
 - 仍有少量历史文案编码残留，后续需要继续清理
 
 默认构建产物会输出到 `src-tauri/target/release/bundle/`。

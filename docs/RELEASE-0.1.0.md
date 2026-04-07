@@ -9,6 +9,7 @@
 - 快速记录某天事项
 - 本地保存
 - 托盘常驻
+- 单实例运行
 
 ## 功能范围
 ### 已实现
@@ -22,6 +23,7 @@
 - 无边框、右上锚定、跳过任务栏
 - 可配置窗口尺寸与右上偏移
 - 开机自启动开关
+- 单实例运行，重复启动时自动唤醒现有窗口
 - 自定义应用图标与托盘图标
 
 ### 未纳入本版本
@@ -51,6 +53,9 @@
 - 日程数据库：SQLite
 - 设置存储：本地 JSON
 - 事项内部存储格式：基于 markdown checkbox 的轻量序列化
+- Windows 默认落点：
+- `%APPDATA%\com.lcy.desktopcal.lightweight\settings.json`
+- `%LOCALAPPDATA%\com.lcy.desktopcal.lightweight\desktopcal.sqlite3`
 
 ## 打包说明
 推荐命令：

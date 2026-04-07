@@ -59,3 +59,4 @@
 - Rewrote the project README for the `0.1.0` release line and added a dedicated current-version release document for packaging and handoff.
 - Regenerated the full icon set after stretching the cropped source icon vertically by roughly `10%` and re-centering it to reduce the slightly squashed look.
 - Added a restrained hover-motion system inspired by spotlight/glow interaction patterns: the calendar stage now carries a soft moving light field and nearby day cells pick up subtle responsive border glow without introducing particle-heavy effects.
+- Added single-instance protection so repeated launches reuse and focus the existing window instead of opening multiple desktop widgets, and documented the confirmed Windows storage locations for settings and SQLite data.
