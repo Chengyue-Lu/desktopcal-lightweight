@@ -384,6 +384,7 @@ function App() {
   const pendingFocusIndexRef = useRef<number | null>(null);
   const inputRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const dayRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const panelRef = useRef<HTMLElement | null>(null);
   const stageRef = useRef<HTMLDivElement | null>(null);
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -614,6 +615,97 @@ function App() {
       document.removeEventListener("keydown", handleEscape);
     };
   }, [isSettingsOpen]);
+
+  useEffect(() => {
+    const stageNode = stageRef.current;
+    const panelNode = panelRef.current;
+    if (!stageNode || !panelNode || allDates.length === 0) {
+      return;
+    }
+
+    let frameId = 0;
+    let pointerX = 0;
+    let pointerY = 0;
+
+    const resetGlow = () => {
+      stageNode.style.setProperty("--stage-glow-opacity", "0");
+      for (const isoDate of allDates) {
+        const node = dayRefs.current[isoDate];
+        if (!node) {
+          continue;
+        }
+
+        node.style.setProperty("--cell-glow-alpha", "0");
+      }
+    };
+
+    const renderGlow = () => {
+      frameId = 0;
+      const stageRect = stageNode.getBoundingClientRect();
+      if (stageRect.width === 0 || stageRect.height === 0) {
+        return;
+      }
+
+      const stageX = ((pointerX - stageRect.left) / stageRect.width) * 100;
+      const stageY = ((pointerY - stageRect.top) / stageRect.height) * 100;
+      stageNode.style.setProperty("--stage-glow-x", `${stageX}%`);
+      stageNode.style.setProperty("--stage-glow-y", `${stageY}%`);
+      stageNode.style.setProperty("--stage-glow-opacity", "1");
+
+      for (const isoDate of allDates) {
+        const node = dayRefs.current[isoDate];
+        if (!node || isoDate === editorDate) {
+          continue;
+        }
+
+        const rect = node.getBoundingClientRect();
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        const distance = Math.hypot(pointerX - centerX, pointerY - centerY);
+        const influenceRadius = Math.max(rect.width, rect.height) * 1.85;
+        const intensity = Math.max(0, 1 - distance / influenceRadius);
+
+        if (intensity <= 0.02) {
+          node.style.setProperty("--cell-glow-alpha", "0");
+          continue;
+        }
+
+        const localX = ((pointerX - rect.left) / rect.width) * 100;
+        const localY = ((pointerY - rect.top) / rect.height) * 100;
+        node.style.setProperty("--cell-glow-x", `${localX}%`);
+        node.style.setProperty("--cell-glow-y", `${localY}%`);
+        node.style.setProperty("--cell-glow-alpha", intensity.toFixed(3));
+      }
+    };
+
+    const scheduleGlow = (event: PointerEvent) => {
+      pointerX = event.clientX;
+      pointerY = event.clientY;
+      if (frameId === 0) {
+        frameId = window.requestAnimationFrame(renderGlow);
+      }
+    };
+
+    const handlePointerLeave = () => {
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId);
+        frameId = 0;
+      }
+      resetGlow();
+    };
+
+    stageNode.addEventListener("pointermove", scheduleGlow);
+    panelNode.addEventListener("pointerleave", handlePointerLeave);
+
+    return () => {
+      stageNode.removeEventListener("pointermove", scheduleGlow);
+      panelNode.removeEventListener("pointerleave", handlePointerLeave);
+      if (frameId !== 0) {
+        window.cancelAnimationFrame(frameId);
+      }
+      resetGlow();
+    };
+  }, [allDates, editorDate]);
 
   useLayoutEffect(() => {
     if (!calendar || !editorOpen || !editorDate) {
@@ -960,7 +1052,7 @@ function App() {
 
   return (
     <main className="app-shell">
-      <section className="calendar-panel">
+      <section className="calendar-panel" ref={panelRef}>
         <header className="topbar">
           <div className="topbar__title">
             <h1>{windowTitle}</h1>

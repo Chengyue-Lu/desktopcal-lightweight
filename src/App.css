@@ -27,6 +27,9 @@ button {
 }
 
 .calendar-panel {
+  --stage-glow-x: 50%;
+  --stage-glow-y: 50%;
+  --stage-glow-opacity: 0;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -229,6 +232,26 @@ button {
   flex: 1 1 auto;
   min-height: 0;
   overflow: visible;
+  isolation: isolate;
+}
+
+.calendar-stage::before {
+  content: "";
+  position: absolute;
+  inset: -18px;
+  border-radius: 30px;
+  background: radial-gradient(
+    240px circle at var(--stage-glow-x) var(--stage-glow-y),
+    rgba(146, 190, 255, calc(var(--stage-glow-opacity) * 0.2)) 0%,
+    rgba(146, 190, 255, calc(var(--stage-glow-opacity) * 0.08)) 22%,
+    rgba(146, 190, 255, calc(var(--stage-glow-opacity) * 0.02)) 40%,
+    transparent 62%
+  );
+  opacity: 1;
+  filter: blur(14px);
+  pointer-events: none;
+  transition: opacity 180ms ease-out;
+  z-index: 0;
 }
 
 .calendar-grid {
@@ -236,6 +259,8 @@ button {
   width: 100%;
   grid-template-columns: 48px repeat(7, minmax(0, 1fr));
   gap: 10px;
+  position: relative;
+  z-index: 1;
 }
 
 .calendar-grid--no-week {
@@ -267,6 +292,9 @@ button {
 }
 
 .day-cell {
+  --cell-glow-x: 50%;
+  --cell-glow-y: 50%;
+  --cell-glow-alpha: 0;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -285,6 +313,35 @@ button {
     box-shadow 220ms ease-out,
     opacity 220ms ease-out;
   will-change: transform;
+}
+
+.day-cell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  padding: 1px;
+  border-radius: inherit;
+  background: radial-gradient(
+    120px circle at var(--cell-glow-x) var(--cell-glow-y),
+    rgba(146, 190, 255, calc(var(--cell-glow-alpha) * 0.5)) 0%,
+    rgba(146, 190, 255, calc(var(--cell-glow-alpha) * 0.2)) 34%,
+    transparent 72%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  transition: opacity 160ms ease-out;
+}
+
+.day-cell > * {
+  position: relative;
+  z-index: 1;
 }
 
 .day-cell:hover {
@@ -325,6 +382,10 @@ button {
 .day-cell--editing:hover {
   border-color: rgba(214, 220, 229, 0.92);
   background: rgba(244, 246, 250, 0.99);
+}
+
+.day-cell--editing::after {
+  opacity: 0;
 }
 
 .day-cell__header {

@@ -57,3 +57,5 @@
 - Changed the auto-launch control into a compact slider switch aligned with its label, reset the default window geometry to `1300 x 850` with `5px` top/right anchoring offsets, and pushed the outer app backdrop closer to near-transparent glass.
 - Removed unused front-end settings/payload fields and deleted leftover month/editor date helper functions that were no longer used after the five-week view refactor.
 - Rewrote the project README for the `0.1.0` release line and added a dedicated current-version release document for packaging and handoff.
+- Regenerated the full icon set after stretching the cropped source icon vertically by roughly `10%` and re-centering it to reduce the slightly squashed look.
+- Added a restrained hover-motion system inspired by spotlight/glow interaction patterns: the calendar stage now carries a soft moving light field and nearby day cells pick up subtle responsive border glow without introducing particle-heavy effects.
