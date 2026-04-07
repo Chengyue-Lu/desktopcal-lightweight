@@ -56,3 +56,4 @@
 - Enabled a transparent Tauri window and moved the translucency/blur treatment to the outer app shell so the desktop shows through the true window backdrop instead of leaving an opaque dark rectangle behind the calendar.
 - Changed the auto-launch control into a compact slider switch aligned with its label, reset the default window geometry to `1300 x 850` with `5px` top/right anchoring offsets, and pushed the outer app backdrop closer to near-transparent glass.
 - Removed unused front-end settings/payload fields and deleted leftover month/editor date helper functions that were no longer used after the five-week view refactor.
+- Rewrote the project README for the `0.1.0` release line and added a dedicated current-version release document for packaging and handoff.
