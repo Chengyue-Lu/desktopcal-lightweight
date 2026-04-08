@@ -5,18 +5,27 @@ use std::{
     collections::HashMap,
     fs,
     path::{Path, PathBuf},
-    time::{SystemTime, UNIX_EPOCH},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    thread,
+    time::{Duration as StdDuration, SystemTime, UNIX_EPOCH},
 };
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalSize, WebviewWindow,
+    AppHandle, Emitter, LogicalPosition, LogicalSize, Manager, PhysicalSize, State, WebviewWindow,
     WindowEvent,
 };
 use tauri_plugin_autostart::ManagerExt as AutostartExt;
 
 const DATE_FORMAT: &str = "%Y-%m-%d";
 const PREVIEW_LIMIT: usize = 2;
+const FULL_MIN_WIDTH: u32 = 760;
+const FULL_MIN_HEIGHT: u32 = 560;
+const COMPACT_WIDTH: u32 = 320;
+const COMPACT_HEIGHT: u32 = 44;
 const MAIN_WINDOW_LABEL: &str = "main";
 const EVENT_OPEN_SETTINGS: &str = "desktopcal://open-settings";
 const TRAY_SHOW: &str = "tray-show";
@@ -71,8 +80,11 @@ struct CalendarPayload {
 struct AppSettings {
     window_width: u32,
     window_height: u32,
+    expanded_window_width: u32,
+    expanded_window_height: u32,
     anchor_top_offset: u32,
     anchor_right_offset: u32,
+    is_collapsed: bool,
     auto_launch: bool,
     show_week_numbers: bool,
     show_holiday_labels: bool,
@@ -84,14 +96,31 @@ impl Default for AppSettings {
         Self {
             window_width: 1300,
             window_height: 850,
+            expanded_window_width: 1300,
+            expanded_window_height: 850,
             anchor_top_offset: 5,
             anchor_right_offset: 5,
+            is_collapsed: false,
             auto_launch: false,
             show_week_numbers: true,
             show_holiday_labels: true,
             last_view_month: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WindowGeometryAnimationPayload {
+    target_width: u32,
+    target_height: u32,
+    duration_ms: Option<u64>,
+    steps: Option<u32>,
+}
+
+#[derive(Clone, Default)]
+struct WindowAnimationState {
+    is_animating: Arc<AtomicBool>,
 }
 
 #[tauri::command]
@@ -227,9 +256,76 @@ fn save_settings(app: AppHandle, payload: AppSettings) -> Result<AppSettings, St
     Ok(next_settings)
 }
 
+#[tauri::command]
+async fn animate_window_geometry(
+    app: AppHandle,
+    payload: WindowGeometryAnimationPayload,
+    animation_state: State<'_, WindowAnimationState>,
+) -> Result<(), String> {
+    let window = main_window(&app)?;
+    let scale_factor = window.scale_factor().map_err(|error| error.to_string())?;
+    let current_size: LogicalSize<f64> = window
+        .inner_size()
+        .map_err(|error| error.to_string())?
+        .to_logical(scale_factor);
+    let settings = load_settings(&app)?;
+    let target_width = payload.target_width.max(COMPACT_WIDTH) as f64;
+    let target_height = payload.target_height.max(COMPACT_HEIGHT) as f64;
+    let duration_ms = payload.duration_ms.unwrap_or(200).max(1);
+    let steps = payload.steps.unwrap_or(12).clamp(1, 24);
+    let frame_delay = (duration_ms / steps as u64).max(1);
+    let target_is_compact =
+        target_width <= COMPACT_WIDTH as f64 + 0.5 && target_height <= COMPACT_HEIGHT as f64 + 0.5;
+
+    animation_state.is_animating.store(true, Ordering::SeqCst);
+
+    if target_is_compact {
+        window
+            .set_min_size(Some(LogicalSize::new(
+                COMPACT_WIDTH as f64,
+                COMPACT_HEIGHT as f64,
+            )))
+            .map_err(|error| error.to_string())?;
+    }
+
+    let result = async {
+        for step in 1..=steps {
+            let progress = step as f64 / steps as f64;
+            let eased = 1.0 - (1.0 - progress).powi(3);
+            let next_width = current_size.width + (target_width - current_size.width) * eased;
+            let next_height = current_size.height + (target_height - current_size.height) * eased;
+
+            window
+                .set_size(LogicalSize::new(next_width, next_height))
+                .map_err(|error| error.to_string())?;
+            position_window_with_size(&window, &settings, next_width, next_height)?;
+
+            if step < steps {
+                thread::sleep(StdDuration::from_millis(frame_delay));
+            }
+        }
+
+        if !target_is_compact {
+            window
+                .set_min_size(Some(LogicalSize::new(
+                    FULL_MIN_WIDTH as f64,
+                    FULL_MIN_HEIGHT as f64,
+                )))
+                .map_err(|error| error.to_string())?;
+        }
+
+        Ok::<(), String>(())
+    }
+    .await;
+
+    animation_state.is_animating.store(false, Ordering::SeqCst);
+    result
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(WindowAnimationState::default())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             let _ = show_main_window(app);
         }))
@@ -251,7 +347,8 @@ pub fn run() {
             get_day_entry,
             save_day_entry,
             get_settings,
-            save_settings
+            save_settings,
+            animate_window_geometry
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -499,13 +596,12 @@ fn main_window(app: &AppHandle) -> Result<WebviewWindow, String> {
 
 fn apply_window_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), String> {
     let window = main_window(app)?;
+    let (window_width, window_height) = effective_window_size(settings);
+    apply_window_constraints(&window, settings)?;
     window
-        .set_size(LogicalSize::new(
-            settings.window_width as f64,
-            settings.window_height as f64,
-        ))
+        .set_size(LogicalSize::new(window_width as f64, window_height as f64))
         .map_err(|error| error.to_string())?;
-    position_window(&window, settings)?;
+    position_window_with_size(&window, settings, window_width as f64, window_height as f64)?;
     window
         .set_skip_taskbar(true)
         .map_err(|error| error.to_string())?;
@@ -516,6 +612,35 @@ fn apply_window_settings(app: &AppHandle, settings: &AppSettings) -> Result<(), 
 }
 
 fn position_window(window: &WebviewWindow, settings: &AppSettings) -> Result<(), String> {
+    let (window_width, window_height) = effective_window_size(settings);
+    position_window_with_size(
+        window,
+        settings,
+        window_width as f64,
+        window_height as f64,
+    )
+}
+
+fn effective_window_size(settings: &AppSettings) -> (u32, u32) {
+    if settings.is_collapsed {
+        (
+            settings.window_width.max(COMPACT_WIDTH),
+            settings.window_height.max(COMPACT_HEIGHT),
+        )
+    } else {
+        (
+            settings.window_width.max(FULL_MIN_WIDTH),
+            settings.window_height.max(FULL_MIN_HEIGHT),
+        )
+    }
+}
+
+fn position_window_with_size(
+    window: &WebviewWindow,
+    settings: &AppSettings,
+    window_width: f64,
+    window_height: f64,
+) -> Result<(), String> {
     let monitor = window
         .primary_monitor()
         .map_err(|error| error.to_string())?
@@ -526,8 +651,6 @@ fn position_window(window: &WebviewWindow, settings: &AppSettings) -> Result<(),
     let logical_top = work_area.position.y as f64 / scale_factor;
     let logical_width = work_area.size.width as f64 / scale_factor;
     let logical_height = work_area.size.height as f64 / scale_factor;
-    let window_width = settings.window_width as f64;
-    let window_height = settings.window_height as f64;
     let right_edge = logical_left + logical_width;
     let bottom_edge = logical_top + logical_height;
     let x = (right_edge - window_width - settings.anchor_right_offset as f64).max(logical_left);
@@ -536,6 +659,18 @@ fn position_window(window: &WebviewWindow, settings: &AppSettings) -> Result<(),
 
     window
         .set_position(LogicalPosition::new(x, y))
+        .map_err(|error| error.to_string())
+}
+
+fn apply_window_constraints(window: &WebviewWindow, settings: &AppSettings) -> Result<(), String> {
+    let min_size = if settings.is_collapsed {
+        LogicalSize::new(COMPACT_WIDTH as f64, COMPACT_HEIGHT as f64)
+    } else {
+        LogicalSize::new(FULL_MIN_WIDTH as f64, FULL_MIN_HEIGHT as f64)
+    };
+
+    window
+        .set_min_size(Some(min_size))
         .map_err(|error| error.to_string())
 }
 
@@ -568,18 +703,34 @@ fn show_settings_panel(app: &AppHandle) -> Result<(), String> {
 
 fn attach_window_handlers(app: AppHandle, window: WebviewWindow) {
     let event_window = window.clone();
+    let animation_state = app.state::<WindowAnimationState>().inner().clone();
     window.on_window_event(move |event| match event {
         WindowEvent::CloseRequested { api, .. } => {
             api.prevent_close();
             let _ = hide_main_window(&app);
         }
         WindowEvent::Resized(size) => {
+            if animation_state.is_animating.load(Ordering::SeqCst) {
+                return;
+            }
+
             if size.width > 0 && size.height > 0 {
                 if let Ok(mut settings) = load_settings(&app) {
                     let logical: LogicalSize<f64> = PhysicalSize::new(size.width, size.height)
                         .to_logical(event_window.scale_factor().unwrap_or(1.0));
-                    settings.window_width = logical.width.round().max(760.0) as u32;
-                    settings.window_height = logical.height.round().max(560.0) as u32;
+
+                    if settings.is_collapsed {
+                        settings.window_width = logical.width.round().max(COMPACT_WIDTH as f64) as u32;
+                        settings.window_height =
+                            logical.height.round().max(COMPACT_HEIGHT as f64) as u32;
+                    } else {
+                        settings.window_width = logical.width.round().max(FULL_MIN_WIDTH as f64) as u32;
+                        settings.window_height =
+                            logical.height.round().max(FULL_MIN_HEIGHT as f64) as u32;
+                        settings.expanded_window_width = settings.window_width;
+                        settings.expanded_window_height = settings.window_height;
+                    }
+
                     let _ = persist_settings_file(&app, &settings);
                     let _ = position_window(&event_window, &settings);
                 }

@@ -60,3 +60,11 @@
 - Regenerated the full icon set after stretching the cropped source icon vertically by roughly `10%` and re-centering it to reduce the slightly squashed look.
 - Added a restrained hover-motion system inspired by spotlight/glow interaction patterns: the calendar stage now carries a soft moving light field and nearby day cells pick up subtle responsive border glow without introducing particle-heavy effects.
 - Added single-instance protection so repeated launches reuse and focus the existing window instead of opening multiple desktop widgets, and documented the confirmed Windows storage locations for settings and SQLite data.
+- Added a persistent compact collapse mode that shrinks the widget into a right-top date bar, remembers its last collapsed/expanded state across restarts, and restores the saved expanded size when reopened.
+- Added a dedicated window-geometry animation command on the Rust side so collapse/expand transitions resize and reposition the actual Tauri window smoothly while preserving the right-top anchor.
+- Updated the settings model so width and height now refer to the expanded window size, with separate persisted `expandedWindowWidth` / `expandedWindowHeight` fields backing collapse recovery.
+- Added compact-mode UI states, a topbar `∧` collapse action, a compact-bar `∨` expand action, and transition styling that crossfades the full calendar panel with the reduced date-only bar.
+- Hid the global browser scrollbars and root overflow so week navigation no longer flashes a transient scrollbar and shakes the window.
+- Increased the compact-mode minimum width to `320px` and clamped startup recovery to the new floor so the compact toggle never gets pushed out of view by an overly narrow saved width.
+- Refined the compact bar layout so the date text yields space first and the expand button stays fixed-width instead of being squeezed outside the visible area.
+- Reworked collapse/expand timing so the old content fades first, the window geometry finishes most of its travel, and the new content fades in near the end with smoother multi-step window animation.

@@ -1,6 +1,6 @@
 # DesktopCal Lightweight
 
-`DesktopCal Lightweight` 是一个基于 `Tauri 2 + React + TypeScript + Rust + SQLite` 的轻量桌面日历工具，当前发布线版本为 `0.1.0`。
+`DesktopCal Lightweight` 是一个基于 `Tauri 2 + React + TypeScript + Rust + SQLite` 的轻量桌面日历工具，当前发布线版本为 `0.1.1`。
 
 它面向“常驻桌面、快速查看、快速记录”的个人使用场景，核心体验是：
 
@@ -10,10 +10,11 @@
 - 数据本地持久化，不依赖账号、网络或同步服务
 - 托盘常驻、右上锚定、无原生边框
 - 单实例运行，重复启动时自动唤醒已有窗口
+- 支持收起为右上角紧凑日期条，并记住上次收起/展开状态
 
 ## 版本
 
-- 应用版本：`0.1.0`
+- 应用版本：`0.1.1`
 - 前端版本：见 [package.json](/d:/lcy/desktopcal-lightweight-develop/package.json)
 - Tauri 配置版本：见 [tauri.conf.json](/d:/lcy/desktopcal-lightweight-develop/src-tauri/tauri.conf.json)
 - Rust crate 版本：见 [Cargo.toml](/d:/lcy/desktopcal-lightweight-develop/src-tauri/Cargo.toml)
@@ -29,6 +30,8 @@
 - 托盘：显示、隐藏、设置、退出
 - 关闭窗口时隐藏到托盘而不是退出
 - 单实例运行保护，防止同时打开多个窗口实例
+- 收起态：`∧ / ∨` 切换完整日历与紧凑日期条
+- 收起/展开动画：旧内容先淡出，新内容后淡入，窗口保持右上锚定平滑变形
 
 ## 存储位置
 
@@ -56,5 +59,5 @@ Windows 下当前版本的本地存储位置如下：
 - [src](/d:/lcy/desktopcal-lightweight-develop/src)：React 前端界面与交互
 - [src-tauri](/d:/lcy/desktopcal-lightweight-develop/src-tauri)：Rust 后端、托盘、窗口与打包配置
 - [docs/design.md](/d:/lcy/desktopcal-lightweight-develop/docs/design.md)：产品设计文档
-- [docs/RELEASE-0.1.0.md](/d:/lcy/desktopcal-lightweight-develop/docs/RELEASE-0.1.0.md)：当前版本说明
+- [docs/RELEASE-0.1.1.md](/d:/lcy/desktopcal-lightweight-develop/docs/RELEASE-0.1.1.md)：当前版本说明
 - [CHANGELOG.md](/d:/lcy/desktopcal-lightweight-develop/CHANGELOG.md)：开发变更记录

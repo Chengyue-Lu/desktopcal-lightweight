@@ -13,14 +13,24 @@ import {
 } from "react";
 import "./App.css";
 import type { AppSettings, CalendarDayCell, CalendarPayload, LineItem } from "./lib/api";
-import { getCalendar, getDayEntry, getSettings, saveDayEntry, saveSettings } from "./lib/api";
-import { getTodayIsoDate, shiftDayIsoDate, toReadableWindow } from "./lib/date";
+import {
+  animateWindowGeometry,
+  getCalendar,
+  getDayEntry,
+  getSettings,
+  saveDayEntry,
+  saveSettings,
+} from "./lib/api";
+import { getTodayIsoDate, shiftDayIsoDate, toCompactDate, toReadableWindow } from "./lib/date";
 
 const DEFAULT_SETTINGS: AppSettings = {
   windowWidth: 1300,
   windowHeight: 850,
+  expandedWindowWidth: 1300,
+  expandedWindowHeight: 850,
   anchorTopOffset: 5,
   anchorRightOffset: 5,
+  isCollapsed: false,
   autoLaunch: false,
   showWeekNumbers: true,
   showHolidayLabels: true,
@@ -29,6 +39,12 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 const BLANK_LINE: LineItem = { text: "", done: false };
 const EDIT_SCALE = 1.1;
+const FULL_MIN_WIDTH = 760;
+const FULL_MIN_HEIGHT = 560;
+const COMPACT_WIDTH = 320;
+const COMPACT_HEIGHT = 44;
+const COLLAPSE_ANIMATION_MS = 240;
+const COLLAPSE_ANIMATION_STEPS = 20;
 const EDGE_PADDING = 10;
 const AXIS_COMPENSATION = [0.24, 0.38, 0.52, 0.68, 0.84];
 const OUTER_COMPENSATION = [0.18, 0.3, 0.44, 0.6, 0.76];
@@ -78,17 +94,41 @@ function average(values: number[]) {
 }
 
 function sanitizeSettings(settings: AppSettings): AppSettings {
+  const isCollapsed = Boolean(settings.isCollapsed);
   const width = Number(settings.windowWidth);
   const height = Number(settings.windowHeight);
+  const expandedWidth = Number(settings.expandedWindowWidth);
+  const expandedHeight = Number(settings.expandedWindowHeight);
   const topOffset = Number(settings.anchorTopOffset);
   const rightOffset = Number(settings.anchorRightOffset);
+  const fallbackExpandedWidth = Number.isFinite(width)
+    ? Math.max(FULL_MIN_WIDTH, Math.round(width))
+    : DEFAULT_SETTINGS.expandedWindowWidth;
+  const fallbackExpandedHeight = Number.isFinite(height)
+    ? Math.max(FULL_MIN_HEIGHT, Math.round(height))
+    : DEFAULT_SETTINGS.expandedWindowHeight;
 
   return {
     ...settings,
-    windowWidth: Number.isFinite(width) ? Math.max(760, Math.round(width)) : DEFAULT_SETTINGS.windowWidth,
-    windowHeight: Number.isFinite(height) ? Math.max(560, Math.round(height)) : DEFAULT_SETTINGS.windowHeight,
+    windowWidth: Number.isFinite(width)
+      ? Math.max(isCollapsed ? COMPACT_WIDTH : FULL_MIN_WIDTH, Math.round(width))
+      : isCollapsed
+        ? COMPACT_WIDTH
+        : fallbackExpandedWidth,
+    windowHeight: Number.isFinite(height)
+      ? Math.max(isCollapsed ? COMPACT_HEIGHT : FULL_MIN_HEIGHT, Math.round(height))
+      : isCollapsed
+        ? COMPACT_HEIGHT
+        : fallbackExpandedHeight,
+    expandedWindowWidth: Number.isFinite(expandedWidth)
+      ? Math.max(FULL_MIN_WIDTH, Math.round(expandedWidth))
+      : fallbackExpandedWidth,
+    expandedWindowHeight: Number.isFinite(expandedHeight)
+      ? Math.max(FULL_MIN_HEIGHT, Math.round(expandedHeight))
+      : fallbackExpandedHeight,
     anchorTopOffset: Number.isFinite(topOffset) ? Math.max(0, Math.round(topOffset)) : 0,
     anchorRightOffset: Number.isFinite(rightOffset) ? Math.max(0, Math.round(rightOffset)) : 0,
+    isCollapsed,
   };
 }
 
@@ -100,6 +140,8 @@ function parseDraftNumber(value: string, fallback: number, minimum: number) {
 
   return Math.max(minimum, Math.round(parsed));
 }
+
+type CollapsePhase = "expanded" | "collapsing" | "collapsed" | "expanding";
 
 async function applyWindowGeometry(settings: AppSettings) {
   const monitor = await currentMonitor();
@@ -137,8 +179,8 @@ function SettingsPanel({
   onClose: () => void;
   panelRef: RefObject<HTMLDivElement | null>;
 }) {
-  const [windowWidth, setWindowWidth] = useState(String(initialSettings.windowWidth));
-  const [windowHeight, setWindowHeight] = useState(String(initialSettings.windowHeight));
+  const [windowWidth, setWindowWidth] = useState(String(initialSettings.expandedWindowWidth));
+  const [windowHeight, setWindowHeight] = useState(String(initialSettings.expandedWindowHeight));
   const [anchorTopOffset, setAnchorTopOffset] = useState(String(initialSettings.anchorTopOffset));
   const [anchorRightOffset, setAnchorRightOffset] = useState(
     String(initialSettings.anchorRightOffset),
@@ -146,8 +188,8 @@ function SettingsPanel({
   const [autoLaunch, setAutoLaunch] = useState(initialSettings.autoLaunch);
 
   useEffect(() => {
-    setWindowWidth(String(initialSettings.windowWidth));
-    setWindowHeight(String(initialSettings.windowHeight));
+    setWindowWidth(String(initialSettings.expandedWindowWidth));
+    setWindowHeight(String(initialSettings.expandedWindowHeight));
     setAnchorTopOffset(String(initialSettings.anchorTopOffset));
     setAnchorRightOffset(String(initialSettings.anchorRightOffset));
     setAutoLaunch(initialSettings.autoLaunch);
@@ -164,7 +206,7 @@ function SettingsPanel({
         <label>
           <span>宽</span>
           <input
-            min={760}
+            min={FULL_MIN_WIDTH}
             onChange={(event) => setWindowWidth(event.currentTarget.value)}
             type="number"
             value={windowWidth}
@@ -173,7 +215,7 @@ function SettingsPanel({
         <label>
           <span>高</span>
           <input
-            min={560}
+            min={FULL_MIN_HEIGHT}
             onChange={(event) => setWindowHeight(event.currentTarget.value)}
             type="number"
             value={windowHeight}
@@ -220,8 +262,27 @@ function SettingsPanel({
           onClick={() =>
             onApply({
               ...initialSettings,
-              windowWidth: parseDraftNumber(windowWidth, initialSettings.windowWidth, 760),
-              windowHeight: parseDraftNumber(windowHeight, initialSettings.windowHeight, 560),
+              windowWidth: parseDraftNumber(
+                windowWidth,
+                initialSettings.expandedWindowWidth,
+                FULL_MIN_WIDTH,
+              ),
+              windowHeight: parseDraftNumber(
+                windowHeight,
+                initialSettings.expandedWindowHeight,
+                FULL_MIN_HEIGHT,
+              ),
+              expandedWindowWidth: parseDraftNumber(
+                windowWidth,
+                initialSettings.expandedWindowWidth,
+                FULL_MIN_WIDTH,
+              ),
+              expandedWindowHeight: parseDraftNumber(
+                windowHeight,
+                initialSettings.expandedWindowHeight,
+                FULL_MIN_HEIGHT,
+              ),
+              isCollapsed: false,
               anchorTopOffset: parseDraftNumber(
                 anchorTopOffset,
                 initialSettings.anchorTopOffset,
@@ -275,8 +336,7 @@ function DayCell({
   registerRef: (isoDate: string, node: HTMLDivElement | null) => void;
   registerInputRef: (lineIndex: number, node: HTMLInputElement | null) => void;
 }) {
-  const [, monthText, dayText] = day.isoDate.split("-");
-  const shortEditorDate = `${Number(monthText)}月${Number(dayText)}日`;
+  const shortEditorDate = toCompactDate(day.isoDate);
 
   return (
     <div
@@ -366,6 +426,8 @@ function App() {
   const todayIsoDate = getTodayIsoDate();
   const [settings, setSettingsState] = useState<AppSettings | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [collapsePhase, setCollapsePhase] = useState<CollapsePhase>("expanded");
+  const [pendingOpenSettingsAfterExpand, setPendingOpenSettingsAfterExpand] = useState(false);
   const [referenceDate, setReferenceDate] = useState(todayIsoDate);
   const [selectedDate, setSelectedDate] = useState(todayIsoDate);
   const [editingDate, setEditingDate] = useState<string | null>(null);
@@ -388,6 +450,7 @@ function App() {
   const stageRef = useRef<HTMLDivElement | null>(null);
   const settingsPanelRef = useRef<HTMLDivElement | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement | null>(null);
+  const collapseTimerRef = useRef<number | null>(null);
   const editorDate = editingDate;
 
   const allDates = useMemo(
@@ -422,6 +485,14 @@ function App() {
   }, [draftLines, editorOpen]);
 
   useEffect(() => {
+    return () => {
+      if (collapseTimerRef.current !== null) {
+        window.clearTimeout(collapseTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
 
     async function bootstrap() {
@@ -433,6 +504,7 @@ function App() {
 
         const initialReferenceDate = loadedSettings.lastViewMonth ?? todayIsoDate;
         setSettingsState(loadedSettings);
+        setCollapsePhase(loadedSettings.isCollapsed ? "collapsed" : "expanded");
         setReferenceDate(initialReferenceDate);
         setErrorMessage(null);
       } catch (error) {
@@ -441,6 +513,7 @@ function App() {
         }
 
         setSettingsState(DEFAULT_SETTINGS);
+        setCollapsePhase(DEFAULT_SETTINGS.isCollapsed ? "collapsed" : "expanded");
         setErrorMessage(`加载设置失败：${String(error)}`);
       }
     }
@@ -457,7 +530,17 @@ function App() {
     let unlisten: (() => void) | undefined;
 
     listen("desktopcal://open-settings", () => {
-      if (!disposed) {
+      if (disposed) {
+        return;
+      }
+
+      if (collapsePhase === "collapsed") {
+        setPendingOpenSettingsAfterExpand(true);
+        void handleExpand();
+        return;
+      }
+
+      if (collapsePhase === "expanded") {
         setIsSettingsOpen(true);
       }
     })
@@ -478,7 +561,7 @@ function App() {
       disposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [collapsePhase]);
 
   useEffect(() => {
     if (!settings) {
@@ -518,7 +601,7 @@ function App() {
   }, [referenceDate, settings]);
 
   useEffect(() => {
-    if (!editorOpen || !editorDate) {
+    if (collapsePhase !== "expanded" || !editorOpen || !editorDate) {
       return;
     }
 
@@ -561,13 +644,14 @@ function App() {
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Element | null;
-      if (
-        target?.closest(".day-cell") ||
-        target?.closest(".settings-panel") ||
-        target?.closest(".topbar__button--settings")
-      ) {
-        return;
-      }
+        if (
+          target?.closest(".day-cell") ||
+          target?.closest(".settings-panel") ||
+          target?.closest(".topbar__button--settings") ||
+          target?.closest(".topbar__button--collapse")
+        ) {
+          return;
+        }
 
       void saveCurrentEntry(true);
     }
@@ -705,10 +789,10 @@ function App() {
       }
       resetGlow();
     };
-  }, [allDates, editorDate]);
+  }, [allDates, collapsePhase, editorDate]);
 
   useLayoutEffect(() => {
-    if (!calendar || !editorOpen || !editorDate) {
+    if (collapsePhase !== "expanded" || !calendar || !editorOpen || !editorDate) {
       setCellTransforms({});
       setWeekdayTransforms({});
       setWeekLabelTransforms({});
@@ -886,11 +970,10 @@ function App() {
             transform: `translate3d(${weekHeadX}px, ${weekHeadY}px, 0)`,
           },
     );
-  }, [allDates, calendar, dayGridIndex, editorDate, editorOpen]);
+  }, [allDates, calendar, collapsePhase, dayGridIndex, editorDate, editorOpen]);
 
   async function persistSettings(nextSettings: AppSettings) {
     const sanitized = sanitizeSettings(nextSettings);
-    setSettingsState(sanitized);
 
     try {
       const saved = sanitizeSettings(await saveSettings(sanitized));
@@ -901,6 +984,31 @@ function App() {
       setErrorMessage(`保存设置失败：${String(error)}`);
       return null;
     }
+  }
+
+  function clearStageGlow() {
+    const stageNode = stageRef.current;
+    if (stageNode) {
+      stageNode.style.setProperty("--stage-glow-opacity", "0");
+    }
+
+    for (const isoDate of allDates) {
+      const node = dayRefs.current[isoDate];
+      if (node) {
+        node.style.setProperty("--cell-glow-alpha", "0");
+      }
+    }
+  }
+
+  async function getCurrentLogicalWindowSize() {
+    const currentWindow = getCurrentWindow();
+    const scaleFactor = await currentWindow.scaleFactor();
+    const size = await currentWindow.innerSize();
+    const logicalSize = size.toLogical(scaleFactor);
+    return {
+      width: Math.round(logicalSize.width),
+      height: Math.round(logicalSize.height),
+    };
   }
 
   async function saveCurrentEntry(closeOnSuccess: boolean) {
@@ -935,7 +1043,13 @@ function App() {
 
   async function handleApplySettings(nextSettings: AppSettings) {
     setIsSettingsSaving(true);
-    const saved = await persistSettings(nextSettings);
+    const targetSettings = sanitizeSettings({
+      ...nextSettings,
+      isCollapsed: false,
+      windowWidth: nextSettings.expandedWindowWidth,
+      windowHeight: nextSettings.expandedWindowHeight,
+    });
+    const saved = await persistSettings(targetSettings);
     if (saved) {
       try {
         await applyWindowGeometry(saved);
@@ -946,6 +1060,96 @@ function App() {
     setIsSettingsSaving(false);
     if (saved) {
       setIsSettingsOpen(false);
+    }
+  }
+
+  async function handleCollapse() {
+    if (!settings || collapsePhase !== "expanded") {
+      return;
+    }
+
+    if (editorOpen) {
+      const saved = await saveCurrentEntry(true);
+      if (!saved) {
+        return;
+      }
+    }
+
+    setIsSettingsOpen(false);
+    clearStageGlow();
+
+    const liveSize = await getCurrentLogicalWindowSize();
+    const nextSettings = sanitizeSettings({
+      ...settings,
+      expandedWindowWidth: Math.max(FULL_MIN_WIDTH, liveSize.width),
+      expandedWindowHeight: Math.max(FULL_MIN_HEIGHT, liveSize.height),
+      windowWidth: COMPACT_WIDTH,
+      windowHeight: COMPACT_HEIGHT,
+      isCollapsed: true,
+    });
+
+    setCollapsePhase("collapsing");
+    collapseTimerRef.current = window.setTimeout(() => {
+      setCollapsePhase("collapsed");
+    }, COLLAPSE_ANIMATION_MS);
+
+    try {
+      await animateWindowGeometry({
+        targetWidth: COMPACT_WIDTH,
+        targetHeight: COMPACT_HEIGHT,
+        durationMs: COLLAPSE_ANIMATION_MS,
+        steps: COLLAPSE_ANIMATION_STEPS,
+      });
+      const saved = await persistSettings(nextSettings);
+      if (!saved) {
+        setCollapsePhase("expanded");
+      }
+    } catch (error) {
+      setCollapsePhase("expanded");
+      setErrorMessage(`收起窗口失败：${String(error)}`);
+    } finally {
+      if (collapseTimerRef.current !== null) {
+        window.clearTimeout(collapseTimerRef.current);
+        collapseTimerRef.current = null;
+      }
+    }
+  }
+
+  async function handleExpand() {
+    const currentSettings = settings ?? DEFAULT_SETTINGS;
+    if (collapsePhase !== "collapsed") {
+      return;
+    }
+
+    const nextSettings = sanitizeSettings({
+      ...currentSettings,
+      isCollapsed: false,
+      windowWidth: currentSettings.expandedWindowWidth,
+      windowHeight: currentSettings.expandedWindowHeight,
+    });
+
+    setCollapsePhase("expanding");
+
+    try {
+      await animateWindowGeometry({
+        targetWidth: nextSettings.expandedWindowWidth,
+        targetHeight: nextSettings.expandedWindowHeight,
+        durationMs: COLLAPSE_ANIMATION_MS,
+        steps: COLLAPSE_ANIMATION_STEPS,
+      });
+      const saved = await persistSettings(nextSettings);
+      if (saved) {
+        setCollapsePhase("expanded");
+        if (pendingOpenSettingsAfterExpand) {
+          setIsSettingsOpen(true);
+          setPendingOpenSettingsAfterExpand(false);
+        }
+      } else {
+        setCollapsePhase("collapsed");
+      }
+    } catch (error) {
+      setCollapsePhase("collapsed");
+      setErrorMessage(`展开窗口失败：${String(error)}`);
     }
   }
 
@@ -1047,116 +1251,154 @@ function App() {
   }
 
   const windowTitle = calendar ? toReadableWindow(calendar.weeks) : "";
+  const compactDateLabel = toCompactDate(todayIsoDate);
   const showWeekNumbers = settings?.showWeekNumbers ?? true;
   const showHolidayLabels = settings?.showHolidayLabels ?? true;
+  const showFullPanel = collapsePhase !== "collapsed";
+  const showCompactBar = collapsePhase !== "expanded";
+  const isCollapseBusy = collapsePhase === "collapsing" || collapsePhase === "expanding";
 
   return (
-    <main className="app-shell">
-      <section className="calendar-panel" ref={panelRef}>
-        <header className="topbar">
-          <div className="topbar__title">
-            <h1>{windowTitle}</h1>
-          </div>
-
-          <div className="topbar__actions">
-            <button aria-label="向前两周" onClick={() => navigateWindow(-1)} type="button">
-              ↑
-            </button>
-            <button aria-label="回到今天" onClick={jumpToToday} type="button">
-              ⌂
-            </button>
-            <button aria-label="向后两周" onClick={() => navigateWindow(1)} type="button">
-              ↓
-            </button>
-            <button
-              aria-label="打开设置"
-              className="topbar__button--settings"
-              onClick={(event) => {
-                event.stopPropagation();
-                setIsSettingsOpen((current) => !current);
-              }}
-              onPointerDown={(event) => event.stopPropagation()}
-              ref={settingsButtonRef}
-              type="button"
-            >
-              ⚙
-            </button>
-          </div>
-        </header>
-
-        {isSettingsOpen ? (
-          <SettingsPanel
-            initialSettings={settings ?? DEFAULT_SETTINGS}
-            isSaving={isSettingsSaving}
-            onApply={(nextSettings) => {
-              void handleApplySettings(nextSettings);
-            }}
-            onClose={() => setIsSettingsOpen(false)}
-            panelRef={settingsPanelRef}
-          />
-        ) : null}
-
-        <section className="calendar-stage" ref={stageRef}>
-          <section
-            aria-label="five-week-grid"
-            className={showWeekNumbers ? "calendar-grid" : "calendar-grid calendar-grid--no-week"}
-          >
-            {showWeekNumbers ? (
-              <div className="week-label week-label--head" style={weekHeadTransform}>
-                周
+    <main className={`app-shell app-shell--${collapsePhase}`}>
+      {showFullPanel ? (
+        <section className={`calendar-panel calendar-panel--${collapsePhase}`} ref={panelRef}>
+          <div className="calendar-panel__content">
+            <header className="topbar">
+              <div className="topbar__title">
+                <h1>{windowTitle}</h1>
               </div>
+
+              <div className="topbar__actions">
+                <button aria-label="向前两周" onClick={() => navigateWindow(-1)} type="button">
+                  ↑
+                </button>
+                <button aria-label="回到今天" onClick={jumpToToday} type="button">
+                  ⌂
+                </button>
+                <button aria-label="向后两周" onClick={() => navigateWindow(1)} type="button">
+                  ↓
+                </button>
+                <button
+                  aria-label="收起日历"
+                  className="topbar__button--collapse"
+                  disabled={isCollapseBusy}
+                  onClick={() => {
+                    void handleCollapse();
+                  }}
+                  type="button"
+                >
+                  ∧
+                </button>
+                <button
+                  aria-label="打开设置"
+                  className="topbar__button--settings"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setIsSettingsOpen((current) => !current);
+                  }}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  ref={settingsButtonRef}
+                  type="button"
+                >
+                  ⚙
+                </button>
+              </div>
+            </header>
+
+            {isSettingsOpen ? (
+              <SettingsPanel
+                initialSettings={settings ?? DEFAULT_SETTINGS}
+                isSaving={isSettingsSaving}
+                onApply={(nextSettings) => {
+                  void handleApplySettings(nextSettings);
+                }}
+                onClose={() => setIsSettingsOpen(false)}
+                panelRef={settingsPanelRef}
+              />
             ) : null}
 
-            {(calendar?.weekdayLabels ?? []).map((label, columnIndex) => (
-              <div className="weekday" key={label} style={weekdayTransforms[columnIndex]}>
-                {label}
-              </div>
-            ))}
-
-            {calendar?.weeks.map((week, rowIndex) => (
-              <div className="calendar-row" key={`week-${week.weekNumber}-${week.days[0].isoDate}`}>
+            <section className="calendar-stage" ref={stageRef}>
+              <section
+                aria-label="five-week-grid"
+                className={showWeekNumbers ? "calendar-grid" : "calendar-grid calendar-grid--no-week"}
+              >
                 {showWeekNumbers ? (
-                  <div className="week-label" style={weekLabelTransforms[rowIndex]}>
-                    W{String(week.weekNumber).padStart(2, "0")}
+                  <div className="week-label week-label--head" style={weekHeadTransform}>
+                    周
                   </div>
                 ) : null}
 
-                {week.days.map((day) => {
-                  const editing = editorOpen && editorDate === day.isoDate;
-                  return (
-                    <DayCell
-                      day={day}
-                      draftLines={editing ? draftLines : []}
-                      editing={editing}
-                      isDayLoading={editing ? isDayLoading : false}
-                      key={day.isoDate}
-                      onInputChange={(lineIndex, value) =>
-                        updateDraftLine(lineIndex, { text: value })
-                      }
-                      onInputKeyDown={handleLineKeyDown}
-                      onOpenEditor={handleOpenEditor}
-                      onSelect={handleSelectDate}
-                      onToggleDone={(lineIndex) =>
-                        updateDraftLine(lineIndex, {
-                          done: !draftLines[lineIndex]?.done,
-                        })
-                      }
-                      registerInputRef={registerInputRef}
-                      registerRef={registerDayRef}
-                      selected={selectedDate === day.isoDate}
-                      showHolidayLabel={showHolidayLabels}
-                      style={cellTransforms[day.isoDate]}
-                    />
-                  );
-                })}
-              </div>
-            ))}
-          </section>
-        </section>
+                {(calendar?.weekdayLabels ?? []).map((label, columnIndex) => (
+                  <div className="weekday" key={label} style={weekdayTransforms[columnIndex]}>
+                    {label}
+                  </div>
+                ))}
 
-        {errorMessage ? <p className="error-note">{errorMessage}</p> : null}
-        {isCalendarLoading ? <p className="loading-note">正在刷新日历...</p> : null}
-      </section>
+                {calendar?.weeks.map((week, rowIndex) => (
+                  <div className="calendar-row" key={`week-${week.weekNumber}-${week.days[0].isoDate}`}>
+                    {showWeekNumbers ? (
+                      <div className="week-label" style={weekLabelTransforms[rowIndex]}>
+                        W{String(week.weekNumber).padStart(2, "0")}
+                      </div>
+                    ) : null}
+
+                    {week.days.map((day) => {
+                      const editing = editorOpen && editorDate === day.isoDate;
+                      return (
+                        <DayCell
+                          day={day}
+                          draftLines={editing ? draftLines : []}
+                          editing={editing}
+                          isDayLoading={editing ? isDayLoading : false}
+                          key={day.isoDate}
+                          onInputChange={(lineIndex, value) =>
+                            updateDraftLine(lineIndex, { text: value })
+                          }
+                          onInputKeyDown={handleLineKeyDown}
+                          onOpenEditor={handleOpenEditor}
+                          onSelect={handleSelectDate}
+                          onToggleDone={(lineIndex) =>
+                            updateDraftLine(lineIndex, {
+                              done: !draftLines[lineIndex]?.done,
+                            })
+                          }
+                          registerInputRef={registerInputRef}
+                          registerRef={registerDayRef}
+                          selected={selectedDate === day.isoDate}
+                          showHolidayLabel={showHolidayLabels}
+                          style={cellTransforms[day.isoDate]}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </section>
+            </section>
+
+            {errorMessage ? <p className="error-note">{errorMessage}</p> : null}
+            {isCalendarLoading ? <p className="loading-note">正在刷新日历...</p> : null}
+          </div>
+        </section>
+      ) : null}
+
+      {showCompactBar ? (
+        <section className={`compact-bar compact-bar--${collapsePhase}`}>
+          <div className="compact-bar__content">
+            <span className="compact-bar__date">{compactDateLabel}</span>
+            <button
+              aria-label="展开日历"
+              className="compact-bar__toggle"
+              disabled={isCollapseBusy}
+              onClick={() => {
+                void handleExpand();
+              }}
+              type="button"
+            >
+              ∨
+            </button>
+          </div>
+        </section>
+      ) : null}
     </main>
   );
 }

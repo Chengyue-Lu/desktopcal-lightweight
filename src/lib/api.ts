@@ -30,12 +30,22 @@ export type CalendarPayload = {
 export type AppSettings = {
   windowWidth: number;
   windowHeight: number;
+  expandedWindowWidth: number;
+  expandedWindowHeight: number;
   anchorTopOffset: number;
   anchorRightOffset: number;
+  isCollapsed: boolean;
   autoLaunch: boolean;
   showWeekNumbers: boolean;
   showHolidayLabels: boolean;
   lastViewMonth: string | null;
+};
+
+export type WindowGeometryAnimationPayload = {
+  targetWidth: number;
+  targetHeight: number;
+  durationMs?: number;
+  steps?: number;
 };
 
 export function getCalendar(date: string) {
@@ -56,4 +66,8 @@ export function getSettings() {
 
 export function saveSettings(payload: AppSettings) {
   return invoke<AppSettings>("save_settings", { payload });
+}
+
+export function animateWindowGeometry(payload: WindowGeometryAnimationPayload) {
+  return invoke<void>("animate_window_geometry", { payload });
 }

@@ -17,11 +17,19 @@ body,
   min-height: 100%;
   margin: 0;
   background: transparent;
+  overflow: hidden;
 }
 
 body {
   min-width: 320px;
   background: transparent;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar {
+  display: none;
 }
 
 a {

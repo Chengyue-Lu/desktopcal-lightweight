@@ -17,13 +17,21 @@ button {
 }
 
 .app-shell {
+  position: relative;
   min-height: 100vh;
   height: 100vh;
   padding: 14px;
+  overflow: hidden;
   background:
     radial-gradient(circle at top, rgba(88, 129, 180, 0.06), rgba(88, 129, 180, 0) 38%),
     linear-gradient(180deg, rgba(8, 13, 22, 0.06), rgba(8, 13, 22, 0.03));
   backdrop-filter: blur(34px) saturate(132%);
+}
+
+.app-shell--collapsed,
+.app-shell--collapsing,
+.app-shell--expanding {
+  padding: 6px;
 }
 
 .calendar-panel {
@@ -42,6 +50,61 @@ button {
   background: rgba(11, 17, 27, 0.48);
   box-shadow: 0 24px 60px rgba(0, 0, 0, 0.28);
   backdrop-filter: blur(18px) saturate(118%);
+  transform-origin: top right;
+}
+
+.calendar-panel__content {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.calendar-panel--collapsing,
+.calendar-panel--expanding {
+  transition:
+    transform 200ms ease-out,
+    opacity 240ms ease-out,
+    filter 200ms ease-out;
+}
+
+.calendar-panel--collapsing {
+  transform: translate3d(10px, -8px, 0) scale(0.94);
+  opacity: 0.24;
+  filter: saturate(0.92);
+}
+
+.calendar-panel--expanding {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+  filter: none;
+}
+
+.calendar-panel--collapsing .calendar-panel__content {
+  opacity: 0;
+  transform: translate3d(0, -3px, 0) scale(0.986);
+  filter: blur(1px);
+  transition:
+    opacity 96ms ease-out,
+    transform 96ms ease-out,
+    filter 96ms ease-out;
+}
+
+.calendar-panel--expanding .calendar-panel__content {
+  opacity: 0;
+  transform: translate3d(0, 3px, 0) scale(0.988);
+  filter: blur(1px);
+  animation: calendar-content-reveal 88ms ease-out 156ms forwards;
+}
+
+.calendar-panel--expanded .calendar-panel__content {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: none;
+  transition:
+    opacity 88ms ease-out,
+    transform 88ms ease-out,
+    filter 88ms ease-out;
 }
 
 .topbar {
@@ -91,6 +154,12 @@ button {
 .topbar__actions button:hover {
   border-color: rgba(152, 196, 255, 0.34);
   background: rgba(71, 97, 131, 0.26);
+}
+
+.topbar__actions button:disabled,
+.compact-bar__toggle:disabled {
+  cursor: progress;
+  opacity: 0.68;
 }
 
 .settings-panel {
@@ -225,6 +294,137 @@ button {
 .settings-panel__actions button:disabled {
   cursor: progress;
   opacity: 0.7;
+}
+
+.compact-bar {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 4px 0 8px;
+  border: 1px solid rgba(163, 184, 216, 0.14);
+  border-radius: 14px;
+  color: #eef3fb;
+  background: rgba(10, 15, 25, 0.26);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.16);
+  backdrop-filter: blur(18px) saturate(112%);
+  transform-origin: top right;
+}
+
+.compact-bar__content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+
+.compact-bar--collapsing,
+.compact-bar--expanding {
+  transition:
+    transform 200ms ease-out,
+    opacity 240ms ease-out,
+    filter 200ms ease-out;
+}
+
+.compact-bar--collapsing,
+.compact-bar--collapsed {
+  transform: translate3d(0, 0, 0) scale(1);
+  opacity: 1;
+}
+
+.compact-bar--expanding {
+  transform: translate3d(10px, -6px, 0) scale(0.92);
+  opacity: 0.14;
+  filter: blur(2px);
+}
+
+.compact-bar--collapsing .compact-bar__content {
+  animation: compact-content-reveal 84ms ease-out 150ms forwards;
+}
+
+.compact-bar--collapsed .compact-bar__content {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: none;
+  transition:
+    opacity 84ms ease-out,
+    transform 84ms ease-out,
+    filter 84ms ease-out;
+}
+
+.compact-bar--expanding .compact-bar__content {
+  opacity: 0;
+  transform: translate3d(6px, -2px, 0) scale(0.982);
+  filter: blur(1px);
+  transition:
+    opacity 84ms ease-out,
+    transform 84ms ease-out,
+    filter 84ms ease-out;
+}
+
+@keyframes calendar-content-reveal {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 3px, 0) scale(0.988);
+    filter: blur(1px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: none;
+  }
+}
+
+@keyframes compact-content-reveal {
+  from {
+    opacity: 0;
+    transform: translate3d(8px, -2px, 0) scale(0.985);
+    filter: blur(1px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: none;
+  }
+}
+
+.compact-bar__date {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-bar__toggle {
+  flex: 0 0 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid rgba(146, 171, 207, 0.16);
+  border-radius: 8px;
+  color: #eef4ff;
+  font-size: 0.76rem;
+  line-height: 1;
+  background: rgba(62, 84, 115, 0.16);
+}
+
+.compact-bar__toggle:hover {
+  border-color: rgba(152, 196, 255, 0.34);
+  background: rgba(71, 97, 131, 0.24);
 }
 
 .calendar-stage {

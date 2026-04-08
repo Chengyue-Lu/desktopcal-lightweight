@@ -16,6 +16,11 @@ export function shiftDayIsoDate(isoDate: string, offset: number) {
   return toIsoDate(target);
 }
 
+export function toCompactDate(isoDate: string) {
+  const [, monthText, dayText] = isoDate.split("-");
+  return `${Number(monthText)}月${Number(dayText)}日`;
+}
+
 export function toReadableWindow(weeks: { days: { isoDate: string }[] }[]) {
   const startIsoDate = weeks[0]?.days[0]?.isoDate;
   const lastWeek = weeks[weeks.length - 1];
